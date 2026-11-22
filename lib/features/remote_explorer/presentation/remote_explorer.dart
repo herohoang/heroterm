@@ -422,31 +422,32 @@ class _ExplorerTableState extends ConsumerState<_ExplorerTable> {
                 _buildHeader(context, explorer, prefs),
                 const Divider(height: 1),
                 Expanded(
-                  child: entries.isEmpty && !explorer.isLoading
-                      ? const Padding(
+                  // The empty notice is an item of the same list, never
+                  // a replacement for it: replacing the list swallowed
+                  // the ".." parent row, leaving an empty subfolder
+                  // with no way back up from the table.
+                  child: ListView.builder(
+                    itemCount:
+                        entries.length +
+                        (widget.currentPath != '/' ? 1 : 0) +
+                        (entries.isEmpty && !explorer.isLoading ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      var i = index;
+                      if (widget.currentPath != '/') {
+                        if (i == 0) {
+                          return _buildParentRow(context, prefs);
+                        }
+                        i--;
+                      }
+                      if (entries.isEmpty) {
+                        return const Padding(
                           padding: EdgeInsets.all(16),
                           child: Text('This directory is empty.'),
-                        )
-                      : ListView.builder(
-                          itemCount:
-                              entries.length +
-                              (widget.currentPath != '/' ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            var i = index;
-                            if (widget.currentPath != '/') {
-                              if (i == 0) {
-                                return _buildParentRow(context, prefs);
-                              }
-                              i--;
-                            }
-                            return _buildRow(
-                              context,
-                              explorer,
-                              prefs,
-                              entries[i],
-                            );
-                          },
-                        ),
+                        );
+                      }
+                      return _buildRow(context, explorer, prefs, entries[i]);
+                    },
+                  ),
                 ),
               ],
             ),

@@ -1,5 +1,5 @@
 name: heroterm
-description: "HeroTerm - a Flutter desktop SSH client for macOS."
+description: "HeroTerm - a Flutter desktop SSH client for macOS and Windows."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -47,6 +47,7 @@ dependencies:
   desktop_drop: ^0.8.4
 
 dev_dependencies:
+  fake_async: ^1.3.0
   flutter_test:
     sdk: flutter
 

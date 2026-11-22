@@ -1,6 +1,7 @@
 import '../build_info.dart';
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -505,6 +506,17 @@ class _WorkspaceState extends ConsumerState<_Workspace> {
                       tab.terminal,
                       key: ValueKey('terminal-${tab.id}'),
                       autofocus: tab.id == active.id && tab.isConnected,
+                      // Windows takes keys from hardware events
+                      // (ADR-023): its embedder does not deliver
+                      // characters to this custom text-input
+                      // client — letters never arrive, only mapped
+                      // keys and paste do (flutter/flutter#107462).
+                      // macOS keeps the text-input path, which
+                      // Vietnamese IME composition depends on.
+                      hardwareKeyboardOnly: Platform.isWindows,
+                      highlightingEnabled: ref
+                          .watch(uiPreferencesProvider)
+                          .terminalHighlighting,
                     ),
                 ],
               ),

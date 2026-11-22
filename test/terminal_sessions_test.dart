@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:heroterm/core/errors/app_error.dart';
@@ -425,6 +426,70 @@ void main() {
       expect(extra, isNull);
       expect(container.read(sessionManagerProvider).notice, contains('limit'));
       expect(service.connectCount, SessionManagerNotifier.maxTabs);
+    });
+  });
+  shellInitGateTests();
+}
+
+void shellInitGateTests() {
+  group('shell-init quiescence gate (ADR-023)', () {
+    ({ProviderContainer container, FakeShell shell}) connect(FakeAsync async) {
+      final service = FakeService();
+      final container = ProviderContainer(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(
+            InMemorySessionRepository(),
+          ),
+          credentialStoreProvider.overrideWithValue(InMemoryCredentialStore()),
+          sshConnectionServiceProvider.overrideWithValue(service),
+        ],
+      );
+      container.read(sessionsProvider);
+      container.read(sessionManagerProvider);
+      async.flushMicrotasks();
+      async.elapse(Duration.zero);
+      final target = profile('ok.example.com');
+      container.read(sessionsProvider.notifier).addSession(target);
+      async.flushMicrotasks();
+      container.read(sessionManagerProvider.notifier).openSession(target);
+      async.flushMicrotasks();
+      async.elapse(Duration.zero);
+      async.flushMicrotasks();
+      return (container: container, shell: service.lastShell!);
+    }
+
+    test('snippet waits for first output plus a quiet window, sent once', () {
+      fakeAsync((async) {
+        final env = connect(async);
+        addTearDown(env.container.dispose);
+        String sent() => String.fromCharCodes(env.shell.input);
+        // Connected but silent: nothing may be written yet (the
+        // old code wrote the snippet immediately at connect).
+        expect(sent(), isNot(contains('__ht_cwd(){')));
+        env.shell.emitOutput('Last login: Fri Nov 20 2026\r\n');
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 399));
+        expect(sent(), isNot(contains('__ht_cwd(){')));
+        async.elapse(const Duration(milliseconds: 1));
+        expect(sent(), contains('__ht_cwd(){'));
+        // More output and time must not re-send it.
+        env.shell.emitOutput(r'root@host:~# ');
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 10));
+        expect('__ht_cwd(){'.allMatches(sent()).length, 1);
+      });
+    });
+
+    test('snippet falls back to a deadline when the shell is silent', () {
+      fakeAsync((async) {
+        final env = connect(async);
+        addTearDown(env.container.dispose);
+        String sent() => String.fromCharCodes(env.shell.input);
+        async.elapse(const Duration(milliseconds: 2999));
+        expect(sent(), isNot(contains('__ht_cwd(){')));
+        async.elapse(const Duration(milliseconds: 1));
+        expect(sent(), contains('__ht_cwd(){'));
+      });
     });
   });
 }

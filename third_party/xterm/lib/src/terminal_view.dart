@@ -48,6 +48,7 @@ class TerminalView extends StatefulWidget {
     this.onKeyEvent,
     this.readOnly = false,
     this.hardwareKeyboardOnly = false,
+    this.highlightingEnabled = true,
     this.simulateScroll = true,
   });
 
@@ -134,6 +135,11 @@ class TerminalView extends StatefulWidget {
   /// True if only hardware keyboard events should be used as input. This will
   /// also prevent any on-screen keyboard to be shown.
   final bool hardwareKeyboardOnly;
+
+  /// Whether MobaXterm-style keyword highlighting is painted
+  /// over uncolored shell output (ADR-024). Full-screen apps on
+  /// the alternate buffer are never highlighted.
+  final bool highlightingEnabled;
 
   /// If true, when the terminal is in alternate buffer (for example running
   /// vim, man, etc), if the application does not declare that it can handle
@@ -235,6 +241,7 @@ class TerminalViewState extends State<TerminalView> {
           focusNode: _focusNode,
           cursorType: widget.cursorType,
           alwaysShowCursor: widget.alwaysShowCursor,
+          highlightingEnabled: widget.highlightingEnabled,
           onEditableRect: _onEditableRect,
           composingText: _composingText,
         );
@@ -464,6 +471,7 @@ class _TerminalView extends LeafRenderObjectWidget {
     required this.focusNode,
     required this.cursorType,
     required this.alwaysShowCursor,
+    required this.highlightingEnabled,
     this.onEditableRect,
     this.composingText,
   });
@@ -490,6 +498,8 @@ class _TerminalView extends LeafRenderObjectWidget {
 
   final bool alwaysShowCursor;
 
+  final bool highlightingEnabled;
+
   final EditableRectCallback? onEditableRect;
 
   final String? composingText;
@@ -508,6 +518,7 @@ class _TerminalView extends LeafRenderObjectWidget {
       focusNode: focusNode,
       cursorType: cursorType,
       alwaysShowCursor: alwaysShowCursor,
+      highlightingEnabled: highlightingEnabled,
       onEditableRect: onEditableRect,
       composingText: composingText,
     );

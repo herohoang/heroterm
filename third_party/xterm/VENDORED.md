@@ -120,3 +120,36 @@ can be captured. Covered by
 `test/terminal_reflow_cursor_test.dart` in the app repository,
 which drives the terminal with byte streams captured from a
 real bash/readline pty session.
+
+## Patch addendum (ADR-020, 2026-11-08): delta input model
+
+**File:** `lib/src/ui/custom_text_edit.dart`
+
+`CustomTextEditState` additionally implements
+`DeltaTextInputClient` and the input connection is opened with
+`enableDeltaModel: true`. Platforms that support it now send
+granular `TextEditingDelta`s (insert/delete/replace/non-text)
+instead of full editing-value snapshots; the state folds them
+into its shadow value via `TextEditingDelta.apply` (each delta
+rebuilds from its own `oldText` basis, so drift self-heals)
+and feeds the result through the same processing core as the
+classic `updateEditingValue`, which remains as the fallback
+for snapshot-delivering platforms. This retires the
+snapshot-diff as the primary input model — the layer behind
+the ADR-014..018 typing-corruption rounds — while keeping its
+guards as the safety net. Covered by
+`test/terminal_delta_input_test.dart` in the app repository.
+
+## Patch addendum (ADR-024, 2026-11-20): keyword highlighting
+
+New file `lib/src/ui/highlight.dart` (rules, matcher,
+`TerminalHighlighter` cache) plus three surgical changes:
+`TerminalPainter` consults the highlighter in `paintLine` and
+takes an optional rule in `paintCell`/`paintCellForeground`
+(highlight colour + underline join the paragraph cache key);
+`RenderTerminal` gains a `highlightingEnabled` property and
+passes `highlight: enabled && !buffer.isAltBuffer` per line;
+`TerminalView`/`_TerminalView` gain the `highlightingEnabled`
+widget property (default true). On an upstream upgrade, the
+painter/render changes are the only hunks to re-apply — the
+matcher file carries over as-is.

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/painting.dart';
 
+import 'package:xterm/src/ui/highlight.dart';
 import 'package:xterm/src/ui/palette_builder.dart';
 import 'package:xterm/src/ui/paragraph_cache.dart';
 import 'package:xterm/xterm.dart';
@@ -25,6 +26,11 @@ class TerminalPainter {
   /// cell no longer produces the same visual output. For example, when
   /// [_textStyle] is changed, or when the system font changes.
   final _paragraphCache = ParagraphCache(10240);
+
+  /// MobaXterm-style keyword highlighter (ADR-024). Consulted by
+  /// [paintLine] only when the caller asks for highlighting
+  /// (never on the alternate buffer).
+  final highlighter = TerminalHighlighter();
 
   TerminalStyle get textStyle => _textStyle;
   TerminalStyle _textStyle;
@@ -142,10 +148,24 @@ class TerminalPainter {
   void paintLine(
     Canvas canvas,
     Offset offset,
-    BufferLine line,
-  ) {
+    BufferLine line, {
+    bool highlight = false,
+  }) {
     final cellData = CellData.empty();
     final cellWidth = _cellSize.width;
+
+    Map<int, TerminalHighlightRule>? cellRules;
+    if (highlight) {
+      final spans = highlighter.highlightsFor(line);
+      if (spans.isNotEmpty) {
+        cellRules = {};
+        for (final span in spans) {
+          for (var c = span.startCell; c < span.endCell; c++) {
+            cellRules[c] = span.rule;
+          }
+        }
+      }
+    }
 
     for (var i = 0; i < line.length; i++) {
       line.getCellData(i, cellData);
@@ -153,7 +173,7 @@ class TerminalPainter {
       final charWidth = cellData.content >> CellContent.widthShift;
       final cellOffset = offset.translate(i * cellWidth, 0);
 
-      paintCell(canvas, cellOffset, cellData);
+      paintCell(canvas, cellOffset, cellData, highlight: cellRules?[i]);
 
       if (charWidth == 2) {
         i++;
@@ -162,19 +182,37 @@ class TerminalPainter {
   }
 
   @pragma('vm:prefer-inline')
-  void paintCell(Canvas canvas, Offset offset, CellData cellData) {
+  void paintCell(
+    Canvas canvas,
+    Offset offset,
+    CellData cellData, {
+    TerminalHighlightRule? highlight,
+  }) {
     paintCellBackground(canvas, offset, cellData);
-    paintCellForeground(canvas, offset, cellData);
+    paintCellForeground(canvas, offset, cellData, highlight: highlight);
   }
 
   /// Paints the character in the cell represented by [cellData] to [canvas] at
   /// [offset].
   @pragma('vm:prefer-inline')
-  void paintCellForeground(Canvas canvas, Offset offset, CellData cellData) {
+  void paintCellForeground(
+    Canvas canvas,
+    Offset offset,
+    CellData cellData, {
+    TerminalHighlightRule? highlight,
+  }) {
     final charCode = cellData.content & CellContent.codepointMask;
     if (charCode == 0) return;
 
-    final cacheKey = cellData.getHash() ^ _textScaler.hashCode;
+    // Highlighted cells get their own cache entries: the rule's
+    // colour (and underline) join the key so a highlighted glyph
+    // can never be served to a plain cell or vice versa.
+    final cacheKey = cellData.getHash() ^
+        _textScaler.hashCode ^
+        (highlight == null
+            ? 0
+            : highlight.foreground.value ^
+                (highlight.underline ? 0x1F123BB5 : 0x0B5297A7));
     var paragraph = _paragraphCache.getLayoutFromCache(cacheKey);
 
     if (paragraph == null) {
@@ -184,6 +222,16 @@ class TerminalPainter {
           ? resolveForegroundColor(cellData.foreground)
           : resolveBackgroundColor(cellData.background);
 
+      var underline = cellFlags & CellFlags.underline != 0;
+
+      // ADR-024: the highlight wins over the default colour
+      // (spans only ever cover default-coloured, non-inverse
+      // cells, so this cannot fight a program's own colours).
+      if (highlight != null) {
+        color = highlight.foreground;
+        underline = underline || highlight.underline;
+      }
+
       if (cellData.flags & CellFlags.faint != 0) {
         color = color.withOpacity(0.5);
       }
@@ -192,7 +240,7 @@ class TerminalPainter {
         color: color,
         bold: cellFlags & CellFlags.bold != 0,
         italic: cellFlags & CellFlags.italic != 0,
-        underline: cellFlags & CellFlags.underline != 0,
+        underline: underline,
       );
 
       // Flutter does not draw an underline below a space which is not between
@@ -202,7 +250,7 @@ class TerminalPainter {
       // the CodePoint 0xA0. This is a non breaking space and a underline can be
       // drawn below it.
       var char = String.fromCharCode(charCode);
-      if (cellFlags & CellFlags.underline != 0 && charCode == 0x20) {
+      if (underline && charCode == 0x20) {
         char = String.fromCharCode(0xA0);
       }
 

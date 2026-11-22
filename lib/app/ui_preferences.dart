@@ -134,7 +134,9 @@ final class FileEditorSettings {
   final DefaultEditorKind defaultEditor;
 
   /// The configured external editor: an `.app` bundle path or an
-  /// application name for `open -a`. Empty = not configured.
+  /// application for external editing: an `open -a` name or
+  /// `.app` path on macOS, an executable path on Windows.
+  /// Empty = not configured (the OS default handler is used).
   final String externalApp;
 
   /// Sync external-editor changes to the server automatically.
@@ -251,6 +253,7 @@ final class UiPreferences {
     this.sidebarWidth = 440,
     this.columnWidths = const {},
     this.fileEditor = const FileEditorSettings(),
+    this.terminalHighlighting = true,
   });
 
   static const minSidebarWidth = 260.0;
@@ -259,6 +262,11 @@ final class UiPreferences {
   final double sidebarWidth;
   final Map<ExplorerSortColumn, double> columnWidths;
   final FileEditorSettings fileEditor;
+
+  /// MobaXterm-style keyword highlighting in the terminal
+  /// (ADR-024). On by default; stored files from before the
+  /// preference existed load as on.
+  final bool terminalHighlighting;
 
   double get clampedSidebarWidth =>
       sidebarWidth.clamp(minSidebarWidth, maxSidebarWidth).toDouble();
@@ -272,11 +280,13 @@ final class UiPreferences {
     double? sidebarWidth,
     Map<ExplorerSortColumn, double>? columnWidths,
     FileEditorSettings? fileEditor,
+    bool? terminalHighlighting,
   }) {
     return UiPreferences(
       sidebarWidth: sidebarWidth ?? this.sidebarWidth,
       columnWidths: columnWidths ?? this.columnWidths,
       fileEditor: fileEditor ?? this.fileEditor,
+      terminalHighlighting: terminalHighlighting ?? this.terminalHighlighting,
     );
   }
 
@@ -286,6 +296,7 @@ final class UiPreferences {
       for (final entry in columnWidths.entries) entry.key.name: entry.value,
     },
     'fileEditor': fileEditor.toJson(),
+    'terminalHighlighting': terminalHighlighting,
   };
 
   factory UiPreferences.fromJson(Map<String, Object?> json) {
@@ -314,6 +325,9 @@ final class UiPreferences {
       fileEditor: rawEditor is Map
           ? FileEditorSettings.fromJson(rawEditor.cast<String, Object?>())
           : const FileEditorSettings(),
+      terminalHighlighting: json['terminalHighlighting'] is bool
+          ? json['terminalHighlighting'] as bool
+          : true,
     );
   }
 }
@@ -404,6 +418,12 @@ final class UiPreferencesNotifier extends Notifier<UiPreferences> {
   void setFileEditorSettings(FileEditorSettings settings) {
     _userChanged = true;
     state = state.copyWith(fileEditor: settings);
+    _scheduleSave();
+  }
+
+  void setTerminalHighlighting(bool enabled) {
+    _userChanged = true;
+    state = state.copyWith(terminalHighlighting: enabled);
     _scheduleSave();
   }
 

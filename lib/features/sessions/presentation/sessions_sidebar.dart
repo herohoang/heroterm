@@ -171,7 +171,7 @@ class _SessionsSidebarState extends ConsumerState<SessionsSidebar> {
         Expanded(
           child: !state.isLoaded
               ? const Center(child: CircularProgressIndicator())
-              : state.sessions.isEmpty
+              : state.sessions.isEmpty && state.folders.isEmpty
               ? const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
@@ -193,7 +193,24 @@ class _SessionsSidebarState extends ConsumerState<SessionsSidebar> {
                       title: 'Ungrouped',
                       sessions: state.sessionsIn(null),
                     ),
-                    if (state.filteredSessions.isEmpty)
+                    // Folders alone are a real library: keep the
+                    // first-run hint as a list footer instead of
+                    // letting the empty state swallow the tree
+                    // (it keyed on sessions only, so a folder
+                    // created before any session never rendered).
+                    if (state.sessions.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('No sessions yet.'),
+                            SizedBox(height: 4),
+                            Text('Use + to save your first SSH session.'),
+                          ],
+                        ),
+                      )
+                    else if (state.filteredSessions.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Column(

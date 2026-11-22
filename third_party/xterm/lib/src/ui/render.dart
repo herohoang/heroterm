@@ -32,9 +32,11 @@ class RenderTerminal extends RenderBox with RelayoutWhenSystemFontsChangeMixin {
     required FocusNode focusNode,
     required TerminalCursorType cursorType,
     required bool alwaysShowCursor,
+    required bool highlightingEnabled,
     EditableRectCallback? onEditableRect,
     String? composingText,
   })  : _terminal = terminal,
+        _highlightingEnabled = highlightingEnabled,
         _controller = controller,
         _offset = offset,
         _padding = padding,
@@ -107,6 +109,14 @@ class RenderTerminal extends RenderBox with RelayoutWhenSystemFontsChangeMixin {
   set theme(TerminalTheme value) {
     if (value == _painter.theme) return;
     _painter.theme = value;
+    markNeedsPaint();
+  }
+
+  bool _highlightingEnabled;
+  bool get highlightingEnabled => _highlightingEnabled;
+  set highlightingEnabled(bool value) {
+    if (value == _highlightingEnabled) return;
+    _highlightingEnabled = value;
     markNeedsPaint();
   }
 
@@ -418,6 +428,10 @@ class RenderTerminal extends RenderBox with RelayoutWhenSystemFontsChangeMixin {
         canvas,
         offset.translate(0, (i * charHeight + _lineOffset).truncateToDouble()),
         lines[i],
+        // ADR-024: keyword highlighting belongs to shell output;
+        // full-screen apps (alternate buffer) keep full control
+        // of their colours.
+        highlight: _highlightingEnabled && !_terminal.buffer.isAltBuffer,
       );
     }
 

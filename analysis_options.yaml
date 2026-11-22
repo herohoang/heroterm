@@ -16,6 +16,7 @@ analyzer:
     # Vendored upstream package (see third_party/xterm/VENDORED.md);
     # it follows its own lint conventions.
     - third_party/**
+    - windows/**
 
 linter:
   # The lint rules applied to this project can be customized in the

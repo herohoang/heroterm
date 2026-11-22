@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,6 +59,7 @@ class _FileEditorSettingsDialogState
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(uiPreferencesProvider).fileEditor;
+    final highlighting = ref.watch(uiPreferencesProvider).terminalHighlighting;
     final skipped = settings.smartSaveRecords.entries
         .where((e) => e.value.dontAskAgain)
         .toList();
@@ -75,6 +77,25 @@ class _FileEditorSettingsDialogState
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              Text('Terminal', style: Theme.of(context).textTheme.titleSmall),
+              SwitchListTile(
+                key: const Key('settings-terminal-highlighting'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Syntax highlighting'),
+                subtitle: const Text(
+                  'Colours keywords, IP addresses, links and numbers '
+                  'in shell output, like MobaXterm. Text a program '
+                  'colours itself is never overridden.',
+                ),
+                value: highlighting,
+                onChanged: (value) => ref
+                    .read(uiPreferencesProvider.notifier)
+                    .setTerminalHighlighting(value),
+              ),
+              if (highlighting) const _HighlightPreview(),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
               Text(
                 'File Editor',
                 style: Theme.of(context).textTheme.titleSmall,
@@ -126,8 +147,10 @@ class _FileEditorSettingsDialogState
               TextField(
                 key: const Key('settings-external-app-custom'),
                 controller: _customAppController,
-                decoration: const InputDecoration(
-                  hintText: '…or an app name / .app path (e.g. "Sublime Text")',
+                decoration: InputDecoration(
+                  hintText: Platform.isWindows
+                      ? '…or an editor path (e.g. "C:\\Program Files\\Microsoft VS Code\\Code.exe")'
+                      : '…or an app name / .app path (e.g. "Sublime Text")',
                   isDense: true,
                 ),
                 onSubmitted: (value) =>
@@ -249,9 +272,13 @@ Future<void> showOpenWithDialog(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (detected.isEmpty)
-                  const Text(
-                    'No known editor was found in /Applications. '
-                    'Type an application name or .app path below.',
+                  Text(
+                    Platform.isWindows
+                        ? 'No known editor was found in the usual '
+                              'install locations. Type an editor '
+                              'executable path below.'
+                        : 'No known editor was found in /Applications. '
+                              'Type an application name or .app path below.',
                   ),
                 for (final app in detected)
                   ListTile(
@@ -310,4 +337,53 @@ Future<void> showOpenWithDialog(
         .setFileEditorSettings(settings.copyWith(externalApp: chosen));
   }
   await openInExternalEditor(context, ref, entry, chosen);
+}
+
+/// A static sample of the terminal highlighting palette
+/// (mirrors `terminalHighlightRules`, ADR-024).
+final class _HighlightPreview extends StatelessWidget {
+  const _HighlightPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    TextSpan word(String text, Color color, {bool underline = false}) =>
+        TextSpan(
+          text: text,
+          style: TextStyle(
+            color: color,
+            decoration: underline ? TextDecoration.underline : null,
+          ),
+        );
+    const base = TextStyle(
+      fontFamily: 'monospace',
+      fontSize: 12,
+      color: Color(0xFFD6DEEB),
+    );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text.rich(
+        TextSpan(
+          style: base,
+          children: [
+            word('error ', const Color(0xFFEF5350)),
+            word('warning ', const Color(0xFFFFB74D)),
+            word('enabled ', const Color(0xFF81C784)),
+            word('information ', const Color(0xFF64B5F6)),
+            word('103.82.192.240 ', const Color(0xFFF06292)),
+            word('65.2% ', const Color(0xFFFFD54F)),
+            word(
+              'https://ubuntu.com/pro',
+              const Color(0xFF4FC3F7),
+              underline: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

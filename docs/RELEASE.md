@@ -1,4 +1,4 @@
-# HeroTerm — Release guide (macOS)
+# HeroTerm — Release guide (macOS + Windows)
 
 Versioning lives in `pubspec.yaml` (`version: 1.0.0+1` = marketing
 version + build number). The app name shown by macOS comes from
@@ -103,3 +103,53 @@ possible — this is an account prerequisite, not a code blocker.
 - [ ] Version bumped in `pubspec.yaml`; `CHANGELOG.md` updated.
 - [ ] `.dmg` opens, app installs into `/Applications`, first
       launch + connect verified from the installed copy.
+
+## 5. Windows build
+
+Windows compilation requires a Windows host (the Flutter tool
+refuses elsewhere) with Flutter and Visual Studio 2022 including
+the "Desktop development with C++" workload.
+
+From the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package_windows.ps1
+```
+
+The script builds the release with the git build stamp
+(ADR-019), then packages `build\windows\x64\runner\Release`
+into `build\windows\HeroTerm-<version>-windows-x64.zip` (plus
+`.sha256`) with a bilingual install note. Users extract the zip
+and run `HeroTerm.exe` in place — the exe must stay next to its
+DLLs. The build is unsigned, so SmartScreen warns on first run
+("More info" → "Run anyway"); a code-signing certificate
+removes that, mirroring the macOS notarization story in §3.
+Per-user data lands in `%APPDATA%\HeroTerm`; passwords go to
+Windows Credential Manager via DPAPI (flutter_secure_storage).
+
+**Installer (ADR-022).** For a proper setup program instead of
+the portable zip, install Inno Setup 6
+(`winget install JRSoftware.InnoSetup`) and run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package_windows_installer.ps1
+```
+
+This builds the release the same way, then compiles
+`installer\HeroTerm.iss` into
+`build\windows\HeroTerm-<version>-setup.exe` (plus `.sha256`).
+The installer is per-user — it installs into
+`%LOCALAPPDATA%\Programs\HeroTerm` with no admin prompt,
+creates Start Menu (and optional desktop) shortcuts, offers to
+launch the app at the end, and registers a standard
+uninstaller. Uninstalling keeps `%APPDATA%\HeroTerm` (sessions
+and settings survive a reinstall). Same unsigned/SmartScreen
+caveat as the zip.
+
+Windows port notes (ADR-021): the external-editor flow launches
+the configured executable directly (detected: VS Code, Cursor,
+Sublime Text, Notepad++, Zed, Notepad) or the OS default handler
+when none is configured; the file watcher accepts both path
+separators. First Windows run should re-run the manual test
+checklist (typing incl. Vietnamese IME, completion + backspace,
+external edit + auto sync) against a real server.

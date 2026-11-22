@@ -59,7 +59,8 @@ class CustomTextEdit extends StatefulWidget {
   CustomTextEditState createState() => CustomTextEditState();
 }
 
-class CustomTextEditState extends State<CustomTextEdit> with TextInputClient {
+class CustomTextEditState extends State<CustomTextEdit>
+    with TextInputClient, DeltaTextInputClient {
   TextInputConnection? _connection;
 
   void _dbg(String line) => CustomTextEdit.debugLog?.call(line);
@@ -272,6 +273,9 @@ class CustomTextEditState extends State<CustomTextEdit> with TextInputClient {
         autocorrect: false,
         enableSuggestions: false,
         enableIMEPersonalizedLearning: false,
+        // HeroTerm (ADR-020): receive granular deltas instead of
+        // full snapshots wherever the platform supports them.
+        enableDeltaModel: true,
       );
 
       _connection = TextInput.attach(this, config);
@@ -340,7 +344,61 @@ class CustomTextEditState extends State<CustomTextEdit> with TextInputClient {
       'sel=${value.selection.baseOffset},${value.selection.extentOffset} '
       'oldLen=${_committedText.length}',
     );
+    _processEditingValue(value);
+  }
 
+  /// Granular input updates (HeroTerm ADR-020).
+  ///
+  /// With [TextInputConfiguration.enableDeltaModel] the platform
+  /// narrates each edit — insert this, delete that range, replace
+  /// that range — instead of sending a fresh snapshot of the
+  /// whole buffer for the client to diff. The snapshot stream is
+  /// what desynchronised for five rounds of typing bugs
+  /// (ADR-014..018): restarts, replays and phantom values all had
+  /// to be guessed about from two snapshots. A delta carries its
+  /// own basis ([TextEditingDelta.oldText]) and
+  /// [TextEditingDelta.apply] rebuilds the new value from that
+  /// basis (last-write-wins), so folding the deltas into the
+  /// shadow value below self-heals any drift by construction —
+  /// there is no independent platform history left to reconcile.
+  /// The folded value then goes through the same processing as a
+  /// classic update, whose guards (composing hold, phantom and
+  /// restart handling, echo guard) remain as the safety net for
+  /// platforms that still deliver classic updates: those keep
+  /// arriving through [updateEditingValue] unchanged.
+  @override
+  void updateEditingValueWithDeltas(List<TextEditingDelta> deltas) {
+    var value = _currentEditingState;
+    for (final delta in deltas) {
+      _dbg(
+        'DELTA ${_describeDelta(delta)} '
+        'basis=${delta.oldText == value.text ? 'ok' : 'resync'}',
+      );
+      value = delta.apply(value);
+    }
+    _processEditingValue(value);
+  }
+
+  String _describeDelta(TextEditingDelta delta) {
+    return switch (delta) {
+      TextEditingDeltaInsertion d =>
+        'insert "${escapeForLog(d.textInserted)}" @${d.insertionOffset} '
+            'comp=${d.composing.start},${d.composing.end}',
+      TextEditingDeltaDeletion d =>
+        'delete ${d.deletedRange.start},${d.deletedRange.end} '
+            'comp=${d.composing.start},${d.composing.end}',
+      TextEditingDeltaReplacement d =>
+        'replace ${d.replacedRange.start},${d.replacedRange.end} '
+            'with "${escapeForLog(d.replacementText)}" '
+            'comp=${d.composing.start},${d.composing.end}',
+      TextEditingDeltaNonTextUpdate d =>
+        'nontext sel=${d.selection.baseOffset},${d.selection.extentOffset} '
+            'comp=${d.composing.start},${d.composing.end}',
+      _ => '${delta.runtimeType}',
+    };
+  }
+
+  void _processEditingValue(TextEditingValue value) {
     // Echo guard (ADR-017): after a line is submitted, the buffer
     // is rebased to empty — but the platform may still deliver an
     // update it generated BEFORE the rebase, replaying the

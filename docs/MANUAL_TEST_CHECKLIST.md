@@ -39,6 +39,28 @@ items below need the actual app, sandbox, and Finder.
       still corrupts: reproduce once with ⌘⇧L logging on and
       send `heroterm-input-log.txt` — the log now classifies
       RESTART / PHANTOM / REBASE / ECHO events.
+- [ ] Typing on the delta input model (ADR-020): in the deep
+      docker directory, type `docker compose` and `docker
+      system`, pressing Space after each word — the cursor must
+      stay at the end of the text throughout; repeat the
+      completion flow (`nano .en` → Tab → backspace through the
+      completed name) — no text may vanish. If anything still
+      misbehaves, capture ONE ⌘⇧L log of it: the log must
+      contain DELTA lines (proof the delta model is active);
+      a log with only UEV lines is itself the key finding.
+- [ ] Windows typing + paste integrity (ADR-023): on the
+      Windows build, connect and type a full command (letters,
+      spaces, backspace) — every character must land; paste a
+      long multi-line command immediately after connecting —
+      no shell-integration text may appear inside it and no
+      overlapping redraws; type Vietnamese with Unikey/EVKey
+      and confirm composed characters arrive whole.
+- [ ] Syntax highlighting (ADR-024): connect to a Linux server
+      and read the MOTD — links underlined, the IPv4 address
+      pink, percentages amber, "information" blue, "enabled"
+      green; run `ls --color` and vim/htop — their own colours
+      unchanged; Settings → Terminal → Syntax highlighting off
+      returns everything to plain theme colour instantly.
 - [ ] Typing + resize (ADR-018): type a long command (past the
       right edge so the line wraps), then drag the window edge
       or the Explorer sidebar to change the width, then keep

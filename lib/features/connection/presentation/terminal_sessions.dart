@@ -191,6 +191,14 @@ final class TabsState {
   }
 }
 
+/// Quiet window after shell output before the integration
+/// snippet is written (ADR-023).
+const _shellInitQuietWindow = Duration(milliseconds: 400);
+
+/// Hard deadline for the snippet when a shell produces no
+/// output at all (ADR-023).
+const _shellInitFallback = Duration(seconds: 3);
+
 /// The hook installed into bash/zsh interactive shells so each prompt
 /// reports the working directory as an OSC 7 escape (ADR-008).
 const shellIntegrationSnippet =
@@ -228,6 +236,9 @@ final class _TabRuntime {
   RemoteConnection? connection;
   Timer? cwdWatchdog;
   Timer? resizeTimer;
+  Timer? shellInitTimer;
+  bool shellInitSent = false;
+  void Function()? shellInit;
   String? lastSentResize;
   String oscTail = '';
   int generation = 0;
@@ -247,7 +258,20 @@ final class SessionManagerNotifier extends Notifier<TabsState> {
   static const _uuid = Uuid();
 
   @override
-  TabsState build() => const TabsState();
+  TabsState build() {
+    // Release every per-tab timer with the provider: a pending
+    // gate or watchdog timer must never fire into a disposed
+    // notifier and touch its state (ADR-023).
+    ref.onDispose(() {
+      for (final runtime in _runtimes.values) {
+        runtime.cwdWatchdog?.cancel();
+        runtime.resizeTimer?.cancel();
+        runtime.shellInitTimer?.cancel();
+        runtime.shellInit = null;
+      }
+    });
+    return const TabsState();
+  }
 
   _TabRuntime _runtime(String tabId) =>
       _runtimes.putIfAbsent(tabId, _TabRuntime.new);
@@ -327,6 +351,8 @@ final class SessionManagerNotifier extends Notifier<TabsState> {
     runtime?.generation++;
     runtime?.cwdWatchdog?.cancel();
     runtime?.resizeTimer?.cancel();
+    runtime?.shellInitTimer?.cancel();
+    runtime?.shellInit = null;
     runtime?.hostKeyCompleter?.complete(false);
     runtime?.passwordCompleter?.complete(null);
     final connection = runtime?.connection;
@@ -363,6 +389,8 @@ final class SessionManagerNotifier extends Notifier<TabsState> {
     runtime.generation++;
     runtime.cwdWatchdog?.cancel();
     runtime.resizeTimer?.cancel();
+    runtime.shellInitTimer?.cancel();
+    runtime.shellInit = null;
     final connection = runtime.connection;
     if (connection == null) {
       _updateTab(
@@ -508,6 +536,15 @@ final class SessionManagerNotifier extends Notifier<TabsState> {
         _forwardResize(tabId, runtime, shell, width, height);
       };
       shell.stdout.listen((data) {
+        // Feed the shell-init gate (ADR-023): output activity
+        // (re)arms the quiet window.
+        if (!runtime.shellInitSent && runtime.shellInit != null) {
+          runtime.shellInitTimer?.cancel();
+          runtime.shellInitTimer = Timer(
+            _shellInitQuietWindow,
+            () => runtime.shellInit?.call(),
+          );
+        }
         final text = utf8.decode(data, allowMalformed: true);
         InputDebugLog.log('IN "${CustomTextEditState.escapeForLog(text)}"');
         _scanForCwdReport(tabId, text);
@@ -522,6 +559,8 @@ final class SessionManagerNotifier extends Notifier<TabsState> {
           runtime.connection = null;
           runtime.cwdWatchdog?.cancel();
           runtime.resizeTimer?.cancel();
+          runtime.shellInitTimer?.cancel();
+          runtime.shellInit = null;
           final code = shell.exitCode;
           _updateTab(
             tabId,
@@ -537,15 +576,37 @@ final class SessionManagerNotifier extends Notifier<TabsState> {
 
       _updateTab(tabId, (t) => t.copyWith(status: ConnectionStatus.connected));
 
-      // Shell integration first (so the first tracked prompt already
-      // reports), then the optional startup-directory cd.
-      shell.writeInput(utf8.encode('$shellIntegrationSnippet\n'));
+      // Shell integration + the optional startup-directory cd go
+      // through a quiescence gate (ADR-023): writing the moment
+      // the channel opens races the shell's startup echo and the
+      // user's first paste, interleaving bytes on the input line
+      // (the snippet surfaced mid-command in user reports). The
+      // gate fires after the first output chunk plus a quiet
+      // window; the fallback deadline armed below covers silent
+      // shells.
       final startup = profile.startupDirectory?.trim() ?? '';
-      if (startup.isNotEmpty) {
-        shell.writeInput(
-          utf8.encode("cd '${startup.replaceAll("'", "'\\''")}'\n"),
-        );
-      }
+      runtime.shellInitSent = false;
+      runtime.shellInit = () {
+        if (runtime.shellInitSent ||
+            generation != runtime.generation ||
+            state.tabById(tabId)?.isConnected != true) {
+          return;
+        }
+        runtime.shellInitSent = true;
+        runtime.shellInitTimer?.cancel();
+        runtime.shellInitTimer = null;
+        shell.writeInput(utf8.encode('$shellIntegrationSnippet\n'));
+        if (startup.isNotEmpty) {
+          shell.writeInput(
+            utf8.encode("cd '${startup.replaceAll("'", "'\\''")}'\n"),
+          );
+        }
+      };
+      runtime.shellInitTimer?.cancel();
+      runtime.shellInitTimer = Timer(
+        _shellInitFallback,
+        () => runtime.shellInit?.call(),
+      );
 
       runtime.cwdWatchdog?.cancel();
       runtime.resizeTimer?.cancel();

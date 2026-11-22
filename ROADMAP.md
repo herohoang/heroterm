@@ -216,8 +216,11 @@ This roadmap is an incremental plan, not a claim that features already exist. Up
 > `docs/SECURITY_REVIEW.md`; manual checklist in
 > `docs/MANUAL_TEST_CHECKLIST.md`; user guide in
 > `docs/USER_GUIDE.md`; release notes in `CHANGELOG.md`.
-> Multi-tab connections, saved snippets, and Windows/Linux are
-> deferred until after MVP stability, per the original roadmap.
+> Multi-tab connections shipped post-MVP; saved snippets and
+> Linux remain deferred. **Windows build added 2026-11-16
+> (ADR-021)**: runner + external-editor port + packaging script
+> (`scripts/package_windows.ps1`); compilation and the manual
+> checklist run on a Windows host are the user's next step.
 
 - [x] Keyboard shortcuts, accessibility, empty/loading/error states.
 - [x] Reconnect behavior and connection timeout handling.

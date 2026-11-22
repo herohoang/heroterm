@@ -2,6 +2,60 @@
 
 ## Unreleased
 
+- **Fixed: an empty folder hid the ".." parent row.** Opening
+  an empty subfolder in the Remote Explorer replaced the whole
+  table with the "This directory is empty." notice, swallowing
+  the ".." row that navigates back to the parent. The notice is
+  now an item of the same list, below the parent row; the root
+  directory still shows no "..". Regression test navigates
+  into an empty folder and back out via "..".
+- **MobaXterm-style syntax highlighting (ADR-024)** — shell
+  output the server leaves plain is now coloured in the
+  terminal: links underlined, IP addresses pink, percentages
+  and sizes amber, numbers pale yellow, and error / warning /
+  success / info keywords in their level colours. Colours a
+  program sets itself are never overridden, and full-screen
+  apps (vim, htop) are untouched. Toggle it under
+  Settings → Terminal → Syntax highlighting.
+- **Fixed: no typing on Windows, and garbled pasted commands
+  (ADR-023).** Windows now reads terminal keys from hardware
+  events (`hardwareKeyboardOnly`) instead of the platform
+  text-input channel, which never delivered characters to the
+  app there (only Enter/arrows and paste worked). Separately,
+  the shell-integration snippet is no longer written the
+  instant a connection opens — it waits for the shell's first
+  output plus a quiet moment, so it can no longer interleave
+  with a fast paste and corrupt the input line (the cause of
+  the overlapping-text screenshots).
+- **Fixed: a folder created before any session never appeared.**
+  The sidebar's empty state keyed on sessions alone, so on a
+  fresh library a new folder was saved but hidden until the
+  first session was created (then both showed). The tree now
+  renders whenever folders exist, with the first-run hint kept
+  as a list footer; regression test drives the real
+  New-folder path on an empty library.
+- **Windows installer (ADR-022)** — `scripts/package_windows_installer.ps1`
+  builds a real setup program (`HeroTerm-<version>-setup.exe`,
+  Inno Setup 6): per-user install with no admin prompt, Start
+  Menu/desktop shortcuts, launch-after-install, and a standard
+  uninstaller that keeps your sessions and settings. The
+  portable zip remains available.
+- **Windows build target (ADR-021)** — HeroTerm now builds for
+  Windows: branded runner (HeroTerm.exe, window title, icon),
+  the external-editor flow ported (editor detection for VS
+  Code/Cursor/Sublime/Notepad++/Zed/Notepad, executable launch,
+  OS default handler when unconfigured), and a packaging
+  script (`scripts/package_windows.ps1`) producing a shareable
+  zip with the git build stamp. Unsigned for now — SmartScreen
+  warns on first run.
+- **Terminal input rebuilt on the delta model (ADR-020)** — the
+  terminal now receives each edit explicitly (insert / delete /
+  replace) from the platform instead of reconstructing edits by
+  diffing snapshots of the input buffer — the mechanism behind
+  the recurring typing corruption (cursor jumping to the line
+  start at word boundaries) across ADR-014..018. The snapshot
+  path remains as an automatic fallback, and the ⌘⇧L input log
+  now shows DELTA lines when the delta model is active.
 - **Build stamp (ADR-019)** — the connection header now shows
   `build <git hash>` (release scripts stamp it automatically),
   and the input debug log's banner records the build and OS,
